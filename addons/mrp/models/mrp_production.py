@@ -1931,7 +1931,8 @@ class MrpProduction(models.Model):
                     if move.has_tracking == 'lot' and order.lot_producing_ids:
                         lines_without_lot = move.move_line_ids.filtered(lambda ml: not ml.lot_id)
                         lines_without_lot.lot_id = order.lot_producing_ids[:1]
-                move.quantity = order.product_uom_id.round(order.qty_producing - order.qty_produced, rounding_method='HALF-UP')
+                # Distribute the produced qty across the finished moves (there can be several, exemple: after a split/merge)
+                move.quantity = order.product_uom_id.round((order.qty_producing - order.qty_produced) * move.unit_factor, rounding_method='HALF-UP')
                 extra_vals = order._prepare_finished_extra_vals()
                 if extra_vals:
                     move.move_line_ids.write(extra_vals)
@@ -2355,6 +2356,9 @@ class MrpProduction(models.Model):
         productions_auto = self.env['mrp.production'].browse(production_auto_ids)
         for production in productions_auto:
             production._set_quantities()
+        productions_auto.move_raw_ids.filtered(
+            lambda m: not m.manual_consumption and not m.picked and m.product_uom.compare(m.quantity, m.product_uom_qty) == 0
+        ).picked = True
 
         self.move_raw_ids.filtered(lambda m: m.manual_consumption and not m.picked).picked = True
 
